@@ -1,47 +1,44 @@
-import openai
 import json
 import hashlib
 import os
 import re
-
+import openai
 
 class AIFixer:
 
     _cache = {}
 
     SYSTEM_PROMPT = (
-        "You are a technical writer specializing in API documentation optimization.\n"
-        "\n"
+        "You are a technical writer specializing in API documentation optimization. "
         "Your task: Rewrite MCP tool definitions to use the MINIMUM number of tokens "
-        "while preserving ALL functional information.\n"
-        "\n"
+        "while preserving ALL functional information.\n\n"
         "RULES:\n"
-        "1. Description: Maximum 1-2 sentences. Remove ALL filler words.\n"
-        "2. Parameter names: Use clear, short snake_case names.\n"
+        "1. Description: Maximum 1-2 sentences. Remove ALL filler words and uncertainty.\n"
+        "2. Parameter names: Use clear, short but descriptive snake_case names.\n"
         "3. Parameter descriptions: Maximum 10 words each.\n"
-        "4. Remove parameters that are deprecated, broken, or debugging-only.\n"
-        "5. Add enum arrays wherever valid values are known.\n"
+        "4. Remove parameters that are: deprecated, broken, debugging-only, "
+        "or described as uncertain.\n"
+        "5. Add enum arrays wherever valid values are mentioned.\n"
         "6. Flatten nested objects into flat parameters with prefixed names.\n"
-        "7. Keep ONLY required and clearly useful parameters.\n"
-        "8. Output ONLY valid JSON. No markdown. No explanation. No code blocks.\n"
-        "\n"
-        "OUTPUT SCHEMA:\n"
-        '{"type":"function","function":{"name":"<name>","description":"<1-2 sentences>",'
-        '"parameters":{"type":"object","properties":{"<param>":{"type":"<type>",'
-        '"description":"<max 10 words>"}},"required":["<required>"]}}}'
+        "7. Keep ONLY required parameters and clearly useful optional ones.\n"
+        "8. Output ONLY valid JSON. No markdown fences. No explanation.\n\n"
+        "OUTPUT FORMAT:\n"
+        '{"type":"function","function":{"name":"<name>",'
+        '"description":"<1-2 sentences>",'
+        '"parameters":{"type":"object","properties":{...},"required":[...]}}}'
     )
 
     @classmethod
     def _get_client(cls):
-        api_key = os.environ.get("OPENAI_API_KEY")
+        api_key = os.environ.get("OPENAI_API_KEY", "")
         if not api_key:
-            print("  [AI FIXER] ERROR: OPENAI_API_KEY not found in environment")
+            print("  [AI_FIXER] ERROR: OPENAI_API_KEY not found in environment")
             return None
         try:
             client = openai.OpenAI(api_key=api_key)
             return client
         except Exception as e:
-            print(f"  [AI FIXER] ERROR creating client: {type(e).__name__}: {e}")
+            print(f"  [AI_FIXER] ERROR creating client: {e}")
             return None
 
     @classmethod
@@ -53,70 +50,56 @@ class AIFixer:
         return hashlib.sha256(payload.encode()).hexdigest()[:20]
 
     @classmethod
-    def _clean_ai_response(cls, text):
-        """
-        Czyści odpowiedz AI z markdown i smieci.
-        AI czesto zwraca JSON opakowany w bloki kodu.
-        """
+    def _clean_response(cls, text):
         cleaned = text.strip()
 
-        # Usuwamy bloki kodu markdown (```json ... ``` lub ``` ... ```)
         if cleaned.startswith("```"):
-            lines = cleaned.split("\n")
-            # Usun pierwsza linie (```json lub ```)
-            lines = lines[1:]
-            # Usun ostatnia linie jesli to ```
-            if lines and lines[-1].strip().startswith("```"):
-                lines = lines[:-1]
-            cleaned = "\n".join(lines).strip()
+            first_newline = cleaned.find("\n")
+            if first_newline != -1:
+                cleaned = cleaned[first_newline + 1:]
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3]
+            cleaned = cleaned.strip()
 
-        # Usuwamy pojedyncze backticki na poczatku/koncu
         cleaned = cleaned.strip("`").strip()
 
-        # Usuwamy ewentualne prefixsy typu "json" na poczatku
-        if cleaned.startswith("json"):
-            cleaned = cleaned[4:].strip()
+        first_brace = cleaned.find("{")
+        if first_brace > 0:
+            cleaned = cleaned[first_brace:]
+
+        last_brace = cleaned.rfind("}")
+        if last_brace != -1 and last_brace < len(cleaned) - 1:
+            cleaned = cleaned[: last_brace + 1]
 
         return cleaned
 
     @classmethod
     def fix(cls, name, description, parameters):
-        """
-        Naprawia opis narzedzia przy pomocy AI.
-        Zwraca naprawiony tool definition lub None.
-        """
-        print(f"  [AI FIXER] Starting fix for: {name}")
+        print(f"  [AI_FIXER] fix() called for tool: {name}")
 
-        # --- KROK 1: Sprawdz cache ---
         cache_key = cls._make_cache_key(name, description, parameters)
         if cache_key in cls._cache:
-            print(f"  [AI FIXER] Cache HIT ({cache_key[:8]})")
+            print(f"  [AI_FIXER] Cache HIT: {cache_key[:8]}")
             return cls._cache[cache_key]
 
-        print(f"  [AI FIXER] Cache MISS — calling OpenAI...")
+        print(f"  [AI_FIXER] Cache MISS: {cache_key[:8]}")
 
-        # --- KROK 2: Sprawdz klienta ---
         client = cls._get_client()
         if client is None:
-            print(f"  [AI FIXER] No client available — returning None")
+            print(f"  [AI_FIXER] No client available, returning None")
             return None
 
-        # --- KROK 3: Przygotuj wiadomosc ---
         user_message = (
-            "Optimize this MCP tool definition:\n"
-            "\n"
+            f"Optimize this MCP tool definition:\n\n"
             f"Name: {name}\n"
             f"Description: {description}\n"
-            f"Parameters: {json.dumps(parameters)}\n"
-            "\n"
-            "Return ONLY the optimized JSON object. "
-            "No markdown formatting. No code blocks. No explanation."
+            f"Parameters: {json.dumps(parameters, indent=2)}\n\n"
+            f"Return ONLY the optimized JSON object. "
+            f"Do NOT wrap it in markdown code fences."
         )
 
-        # --- KROK 4: Wyslij do AI ---
         try:
-            print(f"  [AI FIXER] Sending request to gpt-4o-mini...")
-
+            print(f"  [AI_FIXER] Calling gpt-4o-mini...")
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
@@ -128,77 +111,54 @@ class AIFixer:
             )
 
             raw_text = response.choices[0].message.content
-            print(f"  [AI FIXER] Got response, length: {len(raw_text)} chars")
-            print(f"  [AI FIXER] Raw response preview: {raw_text[:200]}")
+            print(f"  [AI_FIXER] Raw response length: {len(raw_text)} chars")
 
         except Exception as e:
-            print(f"  [AI FIXER] API CALL ERROR: {type(e).__name__}: {e}")
+            print(f"  [AI_FIXER] OPENAI API ERROR: {type(e).__name__}: {e}")
             return None
 
-        # --- KROK 5: Wyczysc odpowiedz ---
         try:
-            cleaned_text = cls._clean_ai_response(raw_text)
-            print(f"  [AI FIXER] Cleaned text preview: {cleaned_text[:200]}")
-
-        except Exception as e:
-            print(f"  [AI FIXER] CLEANING ERROR: {type(e).__name__}: {e}")
-            return None
-
-        # --- KROK 6: Parsuj JSON ---
-        try:
-            result = json.loads(cleaned_text)
-            print(f"  [AI FIXER] JSON parsed OK. Keys: {list(result.keys())}")
+            cleaned = cls._clean_response(raw_text)
+            result = json.loads(cleaned)
+            print(f"  [AI_FIXER] JSON parsed OK. Keys: {list(result.keys())}")
 
         except json.JSONDecodeError as e:
-            print(f"  [AI FIXER] JSON PARSE ERROR: {e}")
-            print(f"  [AI FIXER] Problematic text: {cleaned_text[:300]}")
+            print(f"  [AI_FIXER] JSON PARSE ERROR: {e}")
             return None
 
-        # --- KROK 7: Waliduj strukture ---
         try:
-            # Przypadek 1: AI zwrocilo pelna strukture
-            if "type" in result and "function" in result:
-                final = result
-                print(f"  [AI FIXER] Structure: full (type + function)")
-
-            # Przypadek 2: AI zwrocilo samo function body
+            if "function" in result:
+                validated = result
             elif "name" in result and "description" in result:
-                final = {"type": "function", "function": result}
-                print(f"  [AI FIXER] Structure: partial (wrapped in function)")
-
-            # Przypadek 3: AI zwrocilo function bez type
-            elif "function" in result:
-                final = {"type": "function", "function": result["function"]}
-                print(f"  [AI FIXER] Structure: has function key only")
-
+                validated = {
+                    "type": "function",
+                    "function": result
+                }
+            elif "type" in result and result.get("type") == "function":
+                validated = result
             else:
-                print(f"  [AI FIXER] INVALID STRUCTURE. Keys: {list(result.keys())}")
+                print(f"  [AI_FIXER] VALIDATION ERROR: Unexpected structure")
                 return None
 
-            # Sprawdz czy function ma wymagane pola
-            func = final.get("function", {})
+            func = validated.get("function", {})
             if "name" not in func or "description" not in func:
-                print(f"  [AI FIXER] MISSING name or description in function")
+                print(f"  [AI_FIXER] VALIDATION ERROR: Missing name or description")
                 return None
 
-            # Zapisz w cache
-            cls._cache[cache_key] = final
-
-            # Logi kosztow
-            usage = response.usage
-            cost = (
-                usage.prompt_tokens * 0.15 / 1_000_000
-                + usage.completion_tokens * 0.60 / 1_000_000
-            )
-            print(f"  [AI FIXER] SUCCESS! Cached as {cache_key[:8]}")
-            print(f"  [AI FIXER] Cost: ${cost:.6f} | "
-                  f"Tokens used: {usage.prompt_tokens}+{usage.completion_tokens}")
-
-            return final
+            cls._cache[cache_key] = validated
+            print(f"  [AI_FIXER] SUCCESS! Cached as {cache_key[:8]}. ")
+            return validated
 
         except Exception as e:
-            print(f"  [AI FIXER] VALIDATION ERROR: {type(e).__name__}: {e}")
+            print(f"  [AI_FIXER] VALIDATION EXCEPTION: {type(e).__name__}: {e}")
             return None
+
+    @classmethod
+    def clear_cache(cls):
+        count = len(cls._cache)
+        cls._cache = {}
+        print(f"  [AI_FIXER] Cache cleared ({count} entries removed)")
+        return count
 
     @classmethod
     def get_cache_stats(cls):
