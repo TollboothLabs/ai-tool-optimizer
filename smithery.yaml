@@ -1,0 +1,49 @@
+name: ai-tool-description-optimizer
+displayName: "AI Tool Description Optimizer"
+description: >
+  Text optimization engine for MCP tool definitions. Accepts verbose
+  or ambiguous tool descriptions and returns clean, deterministic
+  versions with 40-70% fewer tokens. Calculates exact cost savings
+  per AI model. Pure text processing — no proxying, no external 
+  API calls.
+vendor: tollbooth-labs
+version: "0.4.0"
+license: MIT
+categories:
+  - ai
+  - optimization
+  - text-processing
+  - developer-tools
+  - cost-reduction
+transport:
+  type: sse
+  url: "https://YOUR-DEPLOYED-URL.railway.app/sse"
+tools:
+  - name: optimize_tool_description
+    description: >
+      Optimizes a verbose MCP tool definition to reduce token count.
+      Returns the optimized definition and a cost savings report.
+    inputSchema:
+      type: object
+      required:
+        - tool_name
+        - tool_description
+        - tool_parameters
+      properties:
+        tool_name:
+          type: string
+        tool_description:
+          type: string
+        tool_parameters:
+          type: object
+        ai_model:
+          type: string
+          enum: [gpt-4o-mini, gpt-4o, gpt-4-turbo, gpt-4, claude-3.5-sonnet, claude-3-opus, gemini-1.5-pro]
+        optimization_level:
+          type: string
+          enum: [light, standard, radical]
+metadata:
+  tokenSavingsRange: "40-70%"
+  pricingModel: "Dynamic — 30% of estimated token savings"
+  noExternalApiCalls: true
+  pureTextProcessing: true

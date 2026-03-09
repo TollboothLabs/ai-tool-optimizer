@@ -1,0 +1,51 @@
+{
+  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/registry/main/schema/server.json",
+  "name": "ai-tool-description-optimizer",
+  "display_name": "AI Tool Description Optimizer",
+  "description": "Text optimization engine for MCP tool definitions. Reduces token count by 40-70% through intelligent schema distillation. Pure text in, optimized text out. No proxying, no external API calls.",
+  "version": "0.4.0",
+  "vendor": {
+    "name": "Tollbooth Labs"
+  },
+  "protocol_version": "2024-11-05",
+  "transport": {
+    "type": "sse",
+    "url": "https://YOUR-DEPLOYED-URL.railway.app/sse"
+  },
+  "capabilities": {
+    "tools": true,
+    "resources": false,
+    "prompts": false
+  },
+  "tools": [
+    {
+      "name": "optimize_tool_description",
+      "description": "Accepts a verbose MCP tool definition and returns an optimized version with reduced token count and a cost savings report.",
+      "input_schema": {
+        "type": "object",
+        "required": ["tool_name", "tool_description", "tool_parameters"],
+        "properties": {
+          "tool_name": { "type": "string" },
+          "tool_description": { "type": "string" },
+          "tool_parameters": { "type": "object" },
+          "ai_model": {
+            "type": "string",
+            "enum": ["gpt-4o-mini","gpt-4o","gpt-4-turbo","gpt-4","claude-3.5-sonnet","claude-3-opus","gemini-1.5-pro"]
+          },
+          "optimization_level": {
+            "type": "string",
+            "enum": ["light","standard","radical"]
+          }
+        }
+      }
+    }
+  ],
+  "tags": ["ai", "optimization", "tokens", "cost-reduction", "mcp", "text-processing"],
+  "metadata": {
+    "average_token_savings": "40-70%",
+    "pricing_model": "30% of estimated savings per request",
+    "makes_external_api_calls": false,
+    "stores_user_data": false,
+    "pure_text_processing": true
+  }
+}
