@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 import json
 import hashlib
 import uuid
+import os
+import traceback
 
 # --- IMPORTY NASZYCH MODUŁÓW ---
 from tool_fixer import RadicalToolFixer
@@ -12,7 +14,7 @@ from pricing_engine import PricingEngine, TokenCounter, BillingDetails, MODEL_PR
 from mcp_transport import router as mcp_router
 from ai_fixer import AIFixer
 
-app = FastAPI(title="AI Tool Description Optimizer", version="0.4.5-debug")
+app = FastAPI(title="AI Tool Description Optimizer", version="0.4.6-bulletproof")
 app.include_router(mcp_router)
 
 CACHE = {}
@@ -94,71 +96,75 @@ async def optimize_tool(request: OptimizeRequest):
     )
 
 # =============================================================
-#  🔍 DEBUG ENDPOINTS — Diagnostyka
+#  🔍 NOWY ENDPOINT TESTOWY DLA AI
 # =============================================================
 
-@app.get("/debug/ai-fixer")
-async def debug_ai_fixer():
-    import os
-    api_key = os.environ.get("OPENAI_API_KEY", "")
-    return {
-        "api_key_present": len(api_key) > 0,
-        "api_key_length": len(api_key),
-        "api_key_first_7_chars": api_key[:7] + "..." if api_key else "EMPTY",
-        "api_key_valid_format": api_key.startswith("sk-") if api_key else False,
-        "ai_fixer_cache_size": len(AIFixer._cache),
-        "environment_keys": [
-            k for k in os.environ.keys()
-            if "KEY" in k.upper() or "API" in k.upper() or "OPENAI" in k.upper()
-        ]
+@app.get("/test-ai-fixer")
+async def test_ai_fixer():
+    """Testuje AI Fixer z prostym przykładem bez uzywania czarnych okienek."""
+    test_name = "do_stuff"
+    test_desc = (
+        "this does stuff with weather. pass it params and "
+        "it returns data. use it when needed i guess. "
+        "its for weather or something like that, could also "
+        "maybe do forecasts? idk just try it."
+    )
+    test_params = {
+        "type": "object",
+        "properties": {
+            "thing1": {
+                "type": "string",
+                "description": "put something here, probably a place name or coords or whatever"
+            },
+            "thing2": {
+                "type": "string",
+                "description": "optional maybe? some kind of format idk"
+            }
+        },
+        "required": ["thing1"]
     }
 
-@app.post("/debug/test-ai-fix")
-async def debug_test_ai_fix(request: Request):
-    import os
-    import traceback
-    body = await request.json()
-    name = body.get("name", "test_tool")
-    description = body.get("description", "")
-    parameters = body.get("parameters", {})
+    # Wyczyść cache żeby wymusić świeży AI call
+    AIFixer.clear_cache()
+    result = AIFixer.fix(test_name, test_desc, test_params)
 
-    api_key = os.environ.get("OPENAI_API_KEY", "")
-
-    if not api_key:
-        return {
-            "ai_fixer_status": "no_api_key",
-            "error_message": "OPENAI_API_KEY environment variable is empty or not set."
+    if result is not None:
+        original_def = {
+            "type": "function",
+            "function": {
+                "name": test_name,
+                "description": test_desc,
+                "parameters": test_params
+            }
         }
-
-    try:
-        import openai
-        client = openai.OpenAI(api_key=api_key)
-        test_response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": "Say 'OK' and nothing else."}],
-            max_tokens=5
+        from pricing_engine import TokenCounter
+        tokens_orig = TokenCounter.count(original_def, "gpt-4o-mini")
+        tokens_fixed = TokenCounter.count(result, "gpt-4o-mini")
+        reduction = (
+            (tokens_orig - tokens_fixed) / tokens_orig * 100
+            if tokens_orig > 0 else 0
         )
-        test_reply = test_response.choices[0].message.content
-        ai_result = AIFixer.fix(name, description, parameters)
 
-        if ai_result is not None:
-            return {"ai_fixer_status": "success", "openai_test": f"OpenAI responds: {test_reply}", "ai_result": ai_result}
-        else:
-            return {"ai_fixer_status": "error", "error_type": "AIFixer returned None"}
-
-    except openai.AuthenticationError as e:
-        return {"ai_fixer_status": "error", "error_type": "AuthenticationError (401)", "error_message": str(e)}
-    except openai.RateLimitError as e:
-        return {"ai_fixer_status": "error", "error_type": "RateLimitError (429)", "error_message": str(e)}
-    except openai.InsufficientQuotaError as e:
-        return {"ai_fixer_status": "error", "error_type": "InsufficientQuotaError", "error_message": str(e)}
-    except Exception as e:
-        return {"ai_fixer_status": "error", "error_type": type(e).__name__, "error_message": str(e), "traceback": traceback.format_exc()}
+        return {
+            "status": "success",
+            "ai_fixer": "working",
+            "original_tokens": tokens_orig,
+            "optimized_tokens": tokens_fixed,
+            "tokens_saved": tokens_orig - tokens_fixed,
+            "reduction_pct": f"{reduction:.1f}%",
+            "optimized_tool": result
+        }
+    else:
+        return {
+            "status": "error",
+            "ai_fixer": "failed",
+            "message": "AIFixer returned None. Code could not parse OpenAI response."
+        }
 
 if __name__ == "__main__":
     import uvicorn
     print("\n" + "🏰 " * 15)
-    print("  TOLLBOOTH v4.5-DEBUG — AI-POWERED OPTIMIZER")
+    print("  TOLLBOOTH v4.6-BULLETPROOF — AI-POWERED OPTIMIZER")
     print("  REST:  http://localhost:8000/docs")
     print("  MCP:   http://localhost:8000/sse")
     print("🏰 " * 15 + "\n")
