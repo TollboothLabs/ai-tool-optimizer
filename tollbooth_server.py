@@ -25,7 +25,7 @@ from pricing_engine import calculate_savings
 
 TOLLBOOTH_WALLET = os.environ.get(
     "TOLLBOOTH_WALLET",
-    "0xYOUR_WALLET_ADDRESS_HERE"
+    "0xD1D47a9eF86A4f607c775b13bd1e574E2a26b17c"
 )
 OPTIMIZATION_PRICE_USD  = 0.005
 PAYMENT_CURRENCY        = "USDC"
@@ -262,3 +262,4 @@ async def optimize(
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("tollbooth_server:app", host="0.0.0.0", port=8000, reload=True)
+
