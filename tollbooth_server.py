@@ -6,11 +6,13 @@ import json
 import hashlib
 import uuid
 
+# --- IMPORTY NASZYCH MODUŁÓW ---
 from tool_fixer import RadicalToolFixer
 from pricing_engine import PricingEngine, TokenCounter, BillingDetails, MODEL_PRICING
 from mcp_transport import router as mcp_router
+from ai_fixer import AIFixer  # <--- TO JEST KLUCZOWE!
 
-app = FastAPI(title="AI Tool Description Optimizer", version="0.4.0")
+app = FastAPI(title="AI Tool Description Optimizer", version="0.4.5")
 app.include_router(mcp_router)
 
 CACHE = {}
@@ -39,20 +41,55 @@ async def optimize_tool(request: OptimizeRequest):
     if request.model not in MODEL_PRICING:
         raise HTTPException(status_code=400, detail="unsupported_model")
 
-    fingerprint = hashlib.sha256(json.dumps({"n": request.tool.name, "d": request.tool.description, "p": request.tool.parameters, "l": request.optimization_level}, sort_keys=True).encode()).hexdigest()[:16]
+    # Tworzymy odcisk palca zapytania
+    fingerprint = hashlib.sha256(json.dumps({
+        "n": request.tool.name, 
+        "d": request.tool.description, 
+        "p": request.tool.parameters, 
+        "l": request.optimization_level
+    }, sort_keys=True).encode()).hexdigest()[:16]
     
+    # 1. SPRAWDZAMY CACHE (czy już to robiliśmy?)
     if fingerprint in CACHE:
         optimized = CACHE[fingerprint]
     else:
-        optimized = RadicalToolFixer.fix(request.tool.name, request.tool.description, request.tool.parameters, request.optimization_level)
+        # 2. PRÓBUJEMY AI FIXERA (Inteligencja + wysoka oszczędność)
+        optimized = AIFixer.fix(
+            request.tool.name, 
+            request.tool.description, 
+            request.tool.parameters
+        )
+        
+        # 3. FALLBACK (Jeśli AI nie ma klucza lub nie zadziała, używamy starej metody)
+        if optimized is None:
+            optimized = RadicalToolFixer.fix(
+                request.tool.name, 
+                request.tool.description, 
+                request.tool.parameters, 
+                request.optimization_level
+            )
+        
         CACHE[fingerprint] = optimized
 
-    original_def = {"type": "function", "function": {"name": request.tool.name, "description": request.tool.description, "parameters": request.tool.parameters}}
+    # --- OBLICZENIA ---
+    original_def = {
+        "type": "function", 
+        "function": {
+            "name": request.tool.name, 
+            "description": request.tool.description, 
+            "parameters": request.tool.parameters
+        }
+    }
+    
     tokens_orig = TokenCounter.count(original_def, request.model)
     tokens_fixed = TokenCounter.count(optimized, request.model)
     billing = PricingEngine.calculate(tokens_orig, tokens_fixed, request.model)
 
-    BILLING_LOG.append({"request_id": request_id, "tokens_saved": billing.tokens_saved, "fee_usd": billing.tollbooth_fee_usd})
+    BILLING_LOG.append({
+        "request_id": request_id, 
+        "tokens_saved": billing.tokens_saved, 
+        "fee_usd": billing.tollbooth_fee_usd
+    })
 
     return OptimizeResponse(
         request_id=request_id,
@@ -64,7 +101,7 @@ async def optimize_tool(request: OptimizeRequest):
 if __name__ == "__main__":
     import uvicorn
     print("\n" + "🏰 " * 15)
-    print("  TOLLBOOTH v4 — AI Tool Description Optimizer")
+    print("  TOLLBOOTH v4.5 — AI-POWERED OPTIMIZER")
     print("  REST:  http://localhost:8000/docs")
     print("  MCP:   http://localhost:8000/sse")
     print("🏰 " * 15 + "\n")
