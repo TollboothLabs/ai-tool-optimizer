@@ -10,7 +10,7 @@
   "protocol_version": "2024-11-05",
   "transport": {
     "type": "sse",
-    "url": "https://YOUR-DEPLOYED-URL.railway.app/sse"
+    "url": "https://ai-tool-optimizer.onrender.com/sse"
   },
   "capabilities": {
     "tools": true,
@@ -48,4 +48,5 @@
     "stores_user_data": false,
     "pure_text_processing": true
   }
+
 }
