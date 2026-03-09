@@ -17,7 +17,7 @@ categories:
   - cost-reduction
 transport:
   type: sse
-  url: "https://YOUR-DEPLOYED-URL.railway.app/sse"
+  url: "https://ai-tool-optimizer.onrender.com/sse"
 tools:
   - name: optimize_tool_description
     description: >
@@ -46,4 +46,5 @@ metadata:
   tokenSavingsRange: "40-70%"
   pricingModel: "Dynamic — 30% of estimated token savings"
   noExternalApiCalls: true
+
   pureTextProcessing: true
